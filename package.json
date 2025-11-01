@@ -24,19 +24,23 @@
 	},
 	"scripts": {
 		"prepare": "npm run build",
-		"ci": "npm run build && npm run ts:check && npm test && npm run format:check",
+		"ci": "npm run build && npm run ts:check && npm test && npm run lint && npm run format:check",
 		"ts:check": "tsc -p tsconfig.json",
+		"lint": "eslint .",
 		"build": "vite build && tsc -p tsconfig.api.json",
 		"format:check": "prettier . --list-different",
 		"format:fix": "prettier . --write",
 		"test": "bash ./test/test.sh"
 	},
 	"devDependencies": {
+		"@eslint/js": "^9.39.0",
 		"@types/node": "^24.9.2",
 		"ajv": "^8.17.1",
 		"commander": "^14.0.2",
+		"eslint": "^9.39.0",
 		"prettier": "^3.6.2",
 		"typescript": "^5.9.3",
+		"typescript-eslint": "^8.46.2",
 		"typescript-json-schema": "^0.65.1",
 		"vite": "^7.1.12"
 	}

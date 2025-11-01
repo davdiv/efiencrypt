@@ -13,7 +13,7 @@ const spawnProcess = (command: string, args: string[], options: SpawnOptions) =>
 			if (!code && !signal) {
 				resolve();
 			} else {
-				throw new Error("Command failed");
+				reject(new Error("Command failed"));
 			}
 		});
 	});
