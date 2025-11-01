@@ -1,6 +1,6 @@
 {
 	"name": "efiencrypt",
-	"version": "0.0.1",
+	"version": "1.0.0",
 	"description": "Encrypts an EFI binary using a hash derived from user-defined data (random data, disk sectors, SMBIOS fields, ...)",
 	"type": "module",
 	"private": true,
