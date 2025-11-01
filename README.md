@@ -1,5 +1,7 @@
 # efiencrypt
 
+[![npm](https://img.shields.io/npm/v/efiencrypt)](https://www.npmjs.com/package/efiencrypt)
+
 **Encrypts an EFI binary using a hash derived from user-defined data (random data, disk sectors, SMBIOS fields, ...)**
 
 `efiencrypt` is a small utility that:
