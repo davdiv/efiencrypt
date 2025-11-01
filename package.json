@@ -1,0 +1,43 @@
+{
+	"name": "efiencrypt",
+	"version": "0.0.0",
+	"description": "Encrypts an EFI binary using a hash derived from user-defined data (random data, disk sectors, SMBIOS fields, ...)",
+	"type": "module",
+	"private": true,
+	"license": "MIT",
+	"bin": {
+		"efiencrypt": "dist/efiencrypt"
+	},
+	"repository": {
+		"url": "https://github.com/davdiv/efiencrypt"
+	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./smbios": {
+			"types": "./dist/smbios.d.ts",
+			"default": "./dist/smbios.js"
+		},
+		"./schema.json": "./dist/schema.json"
+	},
+	"scripts": {
+		"prepare": "npm run build",
+		"ci": "npm run build && npm run ts:check && npm test && npm run format:check",
+		"ts:check": "tsc -p tsconfig.json",
+		"build": "vite build && tsc -p tsconfig.api.json",
+		"format:check": "prettier . --list-different",
+		"format:fix": "prettier . --write",
+		"test": "bash ./test/test.sh"
+	},
+	"devDependencies": {
+		"@types/node": "^24.9.2",
+		"ajv": "^8.17.1",
+		"commander": "^14.0.2",
+		"prettier": "^3.6.2",
+		"typescript": "^5.9.3",
+		"typescript-json-schema": "^0.65.1",
+		"vite": "^7.1.12"
+	}
+}

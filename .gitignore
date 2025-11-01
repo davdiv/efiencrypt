@@ -1,0 +1,8 @@
+*.o
+*.so
+*.img
+*.efi
+*.log
+/bootcode/gen-code.c
+/node_modules
+/dist
