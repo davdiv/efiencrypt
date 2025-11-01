@@ -1,11 +1,13 @@
 import { program } from "commander";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
+import { description, name, version } from "../package.json";
 import { build } from "./build";
 import type { Config } from "./type";
 
 program
-	.description("Encrypts an EFI binary using a hash derived from user‑defined data (smbios, disk, ...)")
+	.name(name)
+	.description(description)
 	.showHelpAfterError(true)
 	.option("-c, --config-file <configFile>", "configuration file")
 	.option("-i, --input-file <inputFile>", "path to the input efi file to embed")
@@ -15,6 +17,7 @@ program
 	.option("--skip-gen-code", "skip generating code")
 	.option("--skip-extract", "skip extracting source code")
 	.option("--skip-make", "skip calling make")
+	.version(version)
 	.action(async (options) => {
 		try {
 			let config: Config = {} as Config;
