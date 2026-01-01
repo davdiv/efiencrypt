@@ -31,11 +31,20 @@ efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *system_table)
     sha256_init(&hash); // erase the key just after decryption
     size_t payload_len = aes_remove_padding(payload, enc_payload_len);
 
+    EFI_GUID GUID_LOADED_IMAGE = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+    EFI_GUID GUID_DEVICE_PATH = EFI_DEVICE_PATH_PROTOCOL_GUID;
+    EFI_LOADED_IMAGE_PROTOCOL *loadedImage = NULL;
+    EFI_DEVICE_PATH_PROTOCOL *bootDevice = NULL;
+    HANDLE_PROTOCOL(image_handle, GUID_LOADED_IMAGE, &loadedImage);
+    if (loadedImage) {
+        HANDLE_PROTOCOL(loadedImage->DeviceHandle, GUID_DEVICE_PATH, &bootDevice);
+    }
+
     EFI_HANDLE payloadHandle = NULL;
     status = uefi_call_wrapper(gBS->LoadImage, 6,
                                FALSE,
                                image_handle,
-                               NULL,
+                               bootDevice,
                                payload,
                                payload_len,
                                &payloadHandle);
