@@ -1,6 +1,6 @@
 {
 	"name": "efiencrypt",
-	"version": "1.0.1",
+	"version": "1.1.0",
 	"description": "Encrypts an EFI binary using a hash derived from user-defined data (random data, disk sectors, SMBIOS fields, EFI variables, ...). The resulting EFI can also optionally embed secure boot keys to enroll if the system is in setup mode.",
 	"type": "module",
 	"private": true,
