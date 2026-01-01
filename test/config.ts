@@ -15,6 +15,8 @@ const config: Config = {
 	skipExtract: true,
 	hashComponents: [
 		{ type: "random", length: 64 },
+		{ type: "efivar", guid: "8be4df61-93ca-11d2-aa0d-00e098032b8c", name: "Lang", value: { type: "binary", buffer: "eng\0" } },
+		{ type: "efivar", guid: "6f4e8ca1-6115-416e-9e92-db2e142a882c", name: "MissingVar", value: { type: "binary", buffer: "" } },
 		{ type: "hd-size", value: hdSize },
 		{ type: "hd-size", device: efiDevice, value: +efiSize * 512 },
 		{ type: "hd-data", offsetRef: "start", offset: 0, value: { type: "file", file: "disk.img", offset: 0, size: (+efiStart + 1) * 512 } },

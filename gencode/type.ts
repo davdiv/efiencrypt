@@ -34,6 +34,13 @@ export interface HashComponentRandom {
 	length: number;
 }
 
+export interface HashEfiVariable {
+	type: "efivar";
+	guid: string;
+	name: string;
+	value: BinaryData;
+}
+
 export interface HashComponentSmbios {
 	type: "smbios";
 	ref: SmbiosFieldRef;
@@ -77,6 +84,7 @@ export interface HashComponentMiscStringData {
 
 export type HashComponent =
 	| HashComponentRandom
+	| HashEfiVariable
 	| HashComponentSmbios
 	| HashComponentFileData
 	| HashComponentFileSize

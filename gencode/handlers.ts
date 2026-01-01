@@ -70,6 +70,17 @@ const codeBlockProtocolGuid = (codeBuilder: CodeBuilder, protocolName: string) =
 	});
 };
 
+const codeBlockGuid = (codeBuilder: CodeBuilder, guidString: string) =>
+	codeBuilder.insertOnce<{ varName: string }>(`GUID-${guidString}`, (data) => {
+		data.varName = codeBuilder.createBinaryVar(parseUUID(guidString));
+	});
+
+const nullStringTermination = Buffer.from([0, 0]);
+const codeBlockUTF16String = (codeBuilder: CodeBuilder, value: string) =>
+	codeBuilder.insertOnce<{ varName: string }>(`string-${value}`, (data) => {
+		data.varName = codeBuilder.createBinaryVar(Buffer.concat([Buffer.from(value, "utf16le"), nullStringTermination]));
+	});
+
 const codeBlockLoadedImage = (codeBuilder: CodeBuilder) => {
 	codeBuilder.insertOnce("loadedImage", () => {
 		codeBlockProtocolGuid(codeBuilder, "LOADED_IMAGE");
@@ -248,6 +259,19 @@ export const handlers: {
 		hash.update(secret);
 		const secretVar = codeBuilder.createBinaryVar(secret);
 		codeBuilder.write(`sha256_update(hash, ${secretVar}, ${secretVar}_len);\n`);
+	},
+	async efivar({ hash, codeBuilder, hashComponent }) {
+		await hashData(hash, hashComponent.value);
+		const { varName: varNameVar } = codeBlockUTF16String(codeBuilder, hashComponent.name);
+		const { varName: guidVar } = codeBlockGuid(codeBuilder, hashComponent.guid);
+		const valueVar = codeBuilder.newVar();
+		codeBuilder.write(`UINTN ${valueVar}_len = 0;
+uint8_t *${valueVar} = LibGetVariableAndSize((void*) ${varNameVar}, (void*) ${guidVar}, &${valueVar}_len);
+if (${valueVar}) {
+	sha256_update(hash, ${valueVar}, ${valueVar}_len);
+	FREE_POOL(${valueVar});
+}
+`);
 	},
 	smbios({ hash, codeBuilder, hashComponent, smbios }) {
 		const fieldRef = resolveSmbiosField(hashComponent.ref);
