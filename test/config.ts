@@ -10,12 +10,19 @@ const efiStart = "0x800";
 const efiSize = "0x19000";
 const efiDevice = `${hdDevice}/HD(1,GPT,CCFEACB5-A85F-4F23-95E9-794387DCCF0E,${efiStart},${efiSize})`;
 const config: Config = {
-	inputFile: process.env.EFI_SHELL_PATH ?? "/usr/share/edk2-shell/x64/Shell_Full.efi",
+	inputFile: "grub.efi",
 	buildFolder: "../bootcode",
 	skipExtract: true,
+	enrollSecureBoot: {
+		kek: { type: "file", file: "sbkeys/KEK.auth" },
+		db: { type: "file", file: "sbkeys/db.auth" },
+		pk: { type: "file", file: "sbkeys/PK.auth" },
+	},
 	hashComponents: [
 		{ type: "random", length: 64 },
 		{ type: "efivar", guid: "8be4df61-93ca-11d2-aa0d-00e098032b8c", name: "Lang", value: { type: "binary", buffer: "eng\0" } },
+		{ type: "efivar", guid: "8be4df61-93ca-11d2-aa0d-00e098032b8c", name: "SetupMode", value: { type: "binary", buffer: "\0" } },
+		{ type: "efivar", guid: "8be4df61-93ca-11d2-aa0d-00e098032b8c", name: "SecureBoot", value: { type: "binary", buffer: "\x01" } },
 		{ type: "efivar", guid: "6f4e8ca1-6115-416e-9e92-db2e142a882c", name: "MissingVar", value: { type: "binary", buffer: "" } },
 		{ type: "hd-size", value: hdSize },
 		{ type: "hd-size", device: efiDevice, value: +efiSize * 512 },
@@ -28,7 +35,6 @@ const config: Config = {
 		{ type: "file-data", file: "BOOTKEY2", value: { type: "buffer", buffer: bootkey } },
 		{ type: "file-size", file: "BOOTKEY3", value: "missing" },
 		{ type: "file-data", file: "BOOTKEY3", value: { type: "missing" } },
-		{ type: "file-data", file: "startup.nsh", value: { type: "file", file: "startup.nsh" } },
 		{ type: "boot-hd-device", value: hdDevice },
 		{ type: "boot-partition-device", value: efiDevice },
 		{ type: "boot-file", value: "\\EFI\\BOOT\\BOOTX64.EFI" },

@@ -92,6 +92,12 @@ export type HashComponent =
 	| HashComponentHardDiskSize
 	| HashComponentMiscStringData;
 
+export interface SecureBootEnrollConfig {
+	kek: BinaryData;
+	db: BinaryData;
+	pk: BinaryData;
+}
+
 export interface Config {
 	$schema?: string;
 
@@ -138,4 +144,9 @@ export interface Config {
 	 * Can be produced by: dmidecode --dump-bin <filePath>
 	 */
 	smbios?: string;
+
+	/**
+	 * Secure boot keys to enroll automatically if the system is in setup mode.
+	 */
+	enrollSecureBoot?: SecureBootEnrollConfig;
 }

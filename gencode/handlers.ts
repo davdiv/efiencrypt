@@ -4,7 +4,7 @@ import { pipeline } from "node:stream/promises";
 import { CodeBuilder } from "./codeBuilder";
 import { CountTransform } from "./hexTransform";
 import { getSmbiosField, resolveSmbiosField, smbiosDataTypeSize, SmbiosTables } from "./smbios";
-import type { BinaryData, BinaryMissingData, Config, HashComponent } from "./type";
+import type { BinaryData, BinaryDataFromBuffer, BinaryDataFromFile, BinaryDataFromLiteral, BinaryMissingData, Config, HashComponent } from "./type";
 
 export type HashComponentHandler<T> = (params: { hash: Hash; codeBuilder: CodeBuilder; config: Config; hashComponent: T; smbios?: SmbiosTables }) => void | Promise<void>;
 
@@ -34,25 +34,28 @@ const fail = (msg: string): never => {
 	throw new Error(msg);
 };
 
+const readBufferBinaryData = (binaryData: BinaryDataFromLiteral | BinaryDataFromBuffer) => (binaryData.type === "buffer" ? binaryData.buffer : Buffer.from(binaryData.buffer, binaryData.type));
+
+const readFileBinaryData = (binaryData: BinaryDataFromFile) => {
+	const start = binaryData.offset ?? 0;
+	return createReadStream(binaryData.file, {
+		start,
+		end: binaryData.size != null ? start + binaryData.size - 1 : Infinity,
+	});
+};
+
+const binaryDataVar = (codeBuilder: CodeBuilder, binaryData: BinaryData) => codeBuilder.createBinaryVar(binaryData.type === "file" ? readFileBinaryData(binaryData) : readBufferBinaryData(binaryData));
+
 const hashData = async (hash: Hash, binaryData: BinaryData | BinaryMissingData): Promise<number> => {
 	if (binaryData.type === "missing") {
 		return binaryData.size ?? 1;
 	}
 	if (binaryData.type === "file") {
 		const count = new CountTransform();
-		const start = binaryData.offset ?? 0;
-		await pipeline(
-			createReadStream(binaryData.file, {
-				start,
-				end: binaryData.size != null ? start + binaryData.size - 1 : Infinity,
-			}),
-			count,
-			hash,
-			{ end: false },
-		);
+		await pipeline(readFileBinaryData(binaryData), count, hash, { end: false });
 		return count.length;
 	}
-	const buffer = binaryData.type === "buffer" ? binaryData.buffer : Buffer.from(binaryData.buffer, binaryData.type);
+	const buffer = readBufferBinaryData(binaryData);
 	hash.update(buffer);
 	return buffer.length;
 };
@@ -381,4 +384,44 @@ if (${valueVar}) {
 	}
 }\n`);
 	},
+};
+
+export const enrollSecureBoot = async ({ codeBuilder, config: { enrollSecureBoot } }: { codeBuilder: CodeBuilder; config: Config }) => {
+	if (enrollSecureBoot) {
+		const efiGlobalVarGuid = codeBlockGuid(codeBuilder, "8be4df61-93ca-11d2-aa0d-00e098032b8c").varName;
+		const setupModeVariable = codeBlockUTF16String(codeBuilder, "SetupMode").varName;
+		const varsToSet = [
+			{
+				name: codeBlockUTF16String(codeBuilder, "KEK").varName,
+				guid: efiGlobalVarGuid,
+				value: binaryDataVar(codeBuilder, enrollSecureBoot.kek),
+			},
+			{
+				name: codeBlockUTF16String(codeBuilder, "db").varName,
+				guid: codeBlockGuid(codeBuilder, "d719b2cb-3d3a-4596-a3bc-dad00e67656f").varName,
+				value: binaryDataVar(codeBuilder, enrollSecureBoot.db),
+			},
+			{
+				name: codeBlockUTF16String(codeBuilder, "PK").varName,
+				guid: efiGlobalVarGuid,
+				value: binaryDataVar(codeBuilder, enrollSecureBoot.pk),
+			},
+		];
+		codeBuilder.write(`
+UINT8 byteVarContent = 0;
+UINTN byteVarSize = sizeof(byteVarContent);
+status = uefi_call_wrapper(RT->GetVariable, 5, ${setupModeVariable}, &${efiGlobalVarGuid}, NULL, &byteVarSize, &byteVarContent);
+if (status == EFI_SUCCESS && byteVarSize == 1 && byteVarContent) {
+`);
+		for (const { name, guid, value } of varsToSet) {
+			codeBuilder.write(`
+	status = uefi_call_wrapper(RT->SetVariable, 5, ${name}, &${guid}, EFI_VARIABLE_NON_VOLATILE
+		| EFI_VARIABLE_RUNTIME_ACCESS
+		| EFI_VARIABLE_BOOTSERVICE_ACCESS
+		| EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS, ${value}_len, ${value});
+	CHECK_ERROR(0);
+`);
+		}
+		codeBuilder.write(`}\n`);
+	}
 };

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { CodeBuilder } from "./codeBuilder";
-import { handlers, reorderHash, type HashComponentHandler } from "./handlers";
+import { enrollSecureBoot, handlers, reorderHash, type HashComponentHandler } from "./handlers";
 import { parseSmbios } from "./smbios";
 import type { Config } from "./type";
 
@@ -17,8 +17,13 @@ EFI_STATUS status = 0;\n`,
 	);
 	codeBuilder.writeNewBlock("gen_compute_hash_vars");
 	codeBuilder.writeNewBlock("gen_compute_hash_prep");
+	codeBuilder.writeNewBlock("enroll_secure_boot");
 	codeBuilder.writeNewBlock("gen_compute_hash");
 	codeBuilder.write("return status;\n}\n");
+
+	codeBuilder.curBlock = "enroll_secure_boot";
+	await enrollSecureBoot({ codeBuilder, config });
+
 	codeBuilder.curBlock = "gen_compute_hash";
 
 	const hash = createHash("sha256");
