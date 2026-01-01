@@ -16,6 +16,8 @@
 
 The resulting EFI can be booted with QEMU or any UEFI firmware.
 
+It is also possible to embed secure boot keys in the resulting EFI that will be enrolled automatically before computing the hash, if the system is in setup mode. In that case, it is usually required to also sign both the input EFI binary and the resulting EFI.
+
 ## Installation
 
 ```bash

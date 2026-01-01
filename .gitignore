@@ -3,6 +3,7 @@
 *.img
 *.efi
 *.log
+/test/sbkeys
 /bootcode/gen-code.c
 /node_modules
 /dist
