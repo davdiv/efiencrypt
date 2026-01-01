@@ -1,7 +1,7 @@
 {
 	"name": "efiencrypt",
 	"version": "1.0.1",
-	"description": "Encrypts an EFI binary using a hash derived from user-defined data (random data, disk sectors, SMBIOS fields, ...), optionally including secure boot keys to enroll if the system is in setup mode.",
+	"description": "Encrypts an EFI binary using a hash derived from user-defined data (random data, disk sectors, SMBIOS fields, EFI variables, ...). The resulting EFI can also optionally embed secure boot keys to enroll if the system is in setup mode.",
 	"type": "module",
 	"private": true,
 	"license": "MIT",
@@ -11,6 +11,13 @@
 	"repository": {
 		"url": "https://github.com/davdiv/efiencrypt"
 	},
+	"keywords": [
+		"uefi",
+		"encrypt",
+		"efi",
+		"secure-boot",
+		"smbios"
+	],
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
