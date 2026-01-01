@@ -12,7 +12,11 @@ const removeDist = (obj: any): any => {
 	if (typeof obj === "string") {
 		obj = obj.replace(distRegExp, "$1");
 	} else if (typeof obj === "object") {
-		obj = Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, removeDist(value)]));
+		if (Array.isArray(obj)) {
+			obj = obj.map(removeDist);
+		} else {
+			obj = Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, removeDist(value)]));
+		}
 	}
 	return obj;
 };
