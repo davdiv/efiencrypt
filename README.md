@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/efiencrypt)](https://www.npmjs.com/package/efiencrypt)
 
-**Encrypts an EFI binary using a hash derived from user-defined data (random data, disk sectors, SMBIOS fields, EFI variables, ...). The resulting EFI can also optionally embed secure boot keys to enroll if the system is in setup mode.**
+**Encrypts an EFI binary using a hash derived from user-defined data (random data, disk sectors, SMBIOS fields, EFI variables, ...). The resulting EFI can also optionally embed secure boot keys to install or update.**
 
 `efiencrypt` is a small utility that:
 
@@ -16,7 +16,7 @@
 
 The resulting EFI can be booted with QEMU or any UEFI firmware.
 
-It is also possible to embed secure boot keys in the resulting EFI that will be enrolled automatically before computing the hash, if the system is in setup mode. In that case, it is usually required to also sign both the input EFI binary and the resulting EFI.
+It is also possible to embed secure boot keys in the resulting EFI that will be installed or updated automatically before computing the hash. In that case, it is usually required to also sign both the input EFI binary and the resulting EFI.
 
 ## Installation
 
