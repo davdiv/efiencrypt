@@ -38,7 +38,7 @@ export interface HashEfiVariable {
 	type: "efivar";
 	guid: string;
 	name: string;
-	value: BinaryData;
+	value?: BinaryData | "missing";
 }
 
 export interface HashComponentSmbios {
@@ -93,9 +93,10 @@ export type HashComponent =
 	| HashComponentMiscStringData;
 
 export interface SecureBootEnrollConfig {
-	kek: BinaryData;
-	db: BinaryData;
-	pk: BinaryData;
+	pk?: BinaryData | BinaryData[];
+	kek?: BinaryData | BinaryData[];
+	db?: BinaryData | BinaryData[];
+	dbx?: BinaryData | BinaryData[];
 }
 
 export interface Config {
@@ -146,7 +147,7 @@ export interface Config {
 	smbios?: string;
 
 	/**
-	 * Secure boot keys to enroll automatically if the system is in setup mode.
+	 * Secure boot keys to enroll automatically if the keys to enroll are different than already installed keys.
 	 */
 	enrollSecureBoot?: SecureBootEnrollConfig;
 }

@@ -21,3 +21,6 @@ sign-efi-sig-list -g "$(< GUID.txt)" -k PK.key -c PK.crt KEK KEK.esl KEK.auth
 openssl req -newkey rsa:4096 -nodes -keyout db.key -new -x509 -sha256 -days 365242 -subj "/CN=Signature Database key/" -out db.crt
 cert-to-efi-sig-list -g "$(< GUID.txt)" db.crt db.esl
 sign-efi-sig-list -g "$(< GUID.txt)" -k KEK.key -c KEK.crt db db.esl db.auth
+
+# Exclusion database:
+sign-efi-sig-list -g "$(< GUID.txt)" -k KEK.key -c KEK.crt dbx /dev/null dbx.auth

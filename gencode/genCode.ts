@@ -19,10 +19,11 @@ EFI_STATUS status = 0;\n`,
 	codeBuilder.writeNewBlock("gen_compute_hash_prep");
 	codeBuilder.writeNewBlock("enroll_secure_boot");
 	codeBuilder.writeNewBlock("gen_compute_hash");
+	codeBuilder.writeNewBlock("gen_compute_hash_clean");
 	codeBuilder.write("return status;\n}\n");
 
 	codeBuilder.curBlock = "enroll_secure_boot";
-	await enrollSecureBoot({ codeBuilder, config });
+	const secureBoot = await enrollSecureBoot({ codeBuilder, config });
 
 	codeBuilder.curBlock = "gen_compute_hash";
 
@@ -31,7 +32,7 @@ EFI_STATUS status = 0;\n`,
 	const smbios = config.smbios ? parseSmbios(await readFile(config.smbios)) : undefined;
 	for (const hashComponent of config.hashComponents) {
 		const handler: HashComponentHandler<any> = handlers[hashComponent.type];
-		await handler({ hashComponent, codeBuilder, config, hash, smbios });
+		await handler({ hashComponent, codeBuilder, config, hash, smbios, secureBoot });
 	}
 
 	const iv = randomBytes(16);

@@ -1,12 +1,20 @@
 import { createHash, type Hash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { CodeBuilder } from "./codeBuilder";
 import { CountTransform } from "./hexTransform";
 import { getSmbiosField, resolveSmbiosField, smbiosDataTypeSize, SmbiosTables } from "./smbios";
 import type { BinaryData, BinaryDataFromBuffer, BinaryDataFromFile, BinaryDataFromLiteral, BinaryMissingData, Config, HashComponent } from "./type";
 
-export type HashComponentHandler<T> = (params: { hash: Hash; codeBuilder: CodeBuilder; config: Config; hashComponent: T; smbios?: SmbiosTables }) => void | Promise<void>;
+export type HashComponentHandler<T> = (params: {
+	hash: Hash;
+	codeBuilder: CodeBuilder;
+	config: Config;
+	hashComponent: T;
+	smbios?: SmbiosTables;
+	secureBoot: Awaited<ReturnType<typeof enrollSecureBoot>>;
+}) => void | Promise<void>;
 
 export const reorderHash = (hash: Buffer) => {
 	for (let i = 0; i < 8; i++) {
@@ -36,7 +44,7 @@ const fail = (msg: string): never => {
 
 const readBufferBinaryData = (binaryData: BinaryDataFromLiteral | BinaryDataFromBuffer) => (binaryData.type === "buffer" ? binaryData.buffer : Buffer.from(binaryData.buffer, binaryData.type));
 
-const readFileBinaryData = (binaryData: BinaryDataFromFile) => {
+const readFileBinaryDataStream = (binaryData: BinaryDataFromFile) => {
 	const start = binaryData.offset ?? 0;
 	return createReadStream(binaryData.file, {
 		start,
@@ -44,7 +52,18 @@ const readFileBinaryData = (binaryData: BinaryDataFromFile) => {
 	});
 };
 
-const binaryDataVar = (codeBuilder: CodeBuilder, binaryData: BinaryData) => codeBuilder.createBinaryVar(binaryData.type === "file" ? readFileBinaryData(binaryData) : readBufferBinaryData(binaryData));
+const readFileBinaryDataBuffer = async (binaryData: BinaryDataFromFile) => {
+	const start = binaryData.offset ?? 0;
+	const buffer = await readFile(binaryData.file);
+	return start === 0 && binaryData.size == null ? buffer : buffer.subarray(start, binaryData.size != null ? start + binaryData.size - 1 : undefined);
+};
+
+const readBinaryData = async (binaryData: BinaryData) => {
+	if (binaryData.type === "file") {
+		return readFileBinaryDataBuffer(binaryData);
+	}
+	return readBufferBinaryData(binaryData);
+};
 
 const hashData = async (hash: Hash, binaryData: BinaryData | BinaryMissingData): Promise<number> => {
 	if (binaryData.type === "missing") {
@@ -52,7 +71,7 @@ const hashData = async (hash: Hash, binaryData: BinaryData | BinaryMissingData):
 	}
 	if (binaryData.type === "file") {
 		const count = new CountTransform();
-		await pipeline(readFileBinaryData(binaryData), count, hash, { end: false });
+		await pipeline(readFileBinaryDataStream(binaryData), count, hash, { end: false });
 		return count.length;
 	}
 	const buffer = readBufferBinaryData(binaryData);
@@ -254,6 +273,24 @@ const codeBlockGetFile = (codeBuilder: CodeBuilder, file: string, device?: strin
 }\n`);
 	});
 
+const codeBlockEfiVariable = (codeBuilder: CodeBuilder, varName: string, guid: string) =>
+	codeBuilder.insertOnce<{ varName: string }>(`efivar:${guid}-${varName}`, (data) => {
+		const valueVar = codeBuilder.newVar();
+		codeBuilder.write(`UINTN ${valueVar}_len = 1;\nuint8_t *${valueVar} = NULL;\n`, "gen_compute_hash_vars");
+		codeBuilder.write(`FREE_POOL(${valueVar});\n`, "gen_compute_hash_clean");
+		data.varName = valueVar;
+	});
+
+const generateReadEfiVariable = (codeBuilder: CodeBuilder, varName: string, guid: string) => {
+	const { varName: varNameVar } = codeBlockUTF16String(codeBuilder, varName);
+	const { varName: guidVar } = codeBlockGuid(codeBuilder, guid);
+	const { varName: valueVar } = codeBlockEfiVariable(codeBuilder, varName, guid);
+	codeBuilder.write(`if (${valueVar}_len == 1 && ! ${valueVar}) {
+  ${valueVar} = LibGetVariableAndSize((void*) ${varNameVar}, (void*) ${guidVar}, &${valueVar}_len);
+}\n`);
+	return { valueVar, varNameVar, guidVar };
+};
+
 export const handlers: {
 	[T in HashComponent["type"]]: HashComponentHandler<HashComponent & { type: T }>;
 } = {
@@ -263,16 +300,17 @@ export const handlers: {
 		const secretVar = codeBuilder.createBinaryVar(secret);
 		codeBuilder.write(`sha256_update(hash, ${secretVar}, ${secretVar}_len);\n`);
 	},
-	async efivar({ hash, codeBuilder, hashComponent }) {
-		await hashData(hash, hashComponent.value);
-		const { varName: varNameVar } = codeBlockUTF16String(codeBuilder, hashComponent.name);
-		const { varName: guidVar } = codeBlockGuid(codeBuilder, hashComponent.guid);
-		const valueVar = codeBuilder.newVar();
-		codeBuilder.write(`UINTN ${valueVar}_len = 0;
-uint8_t *${valueVar} = LibGetVariableAndSize((void*) ${varNameVar}, (void*) ${guidVar}, &${valueVar}_len);
-if (${valueVar}) {
+	async efivar({ hash, codeBuilder, hashComponent, secureBoot }) {
+		const value =
+			hashComponent.value ??
+			secureBoot?.find(({ name, guid }) => hashComponent.name === name && hashComponent.guid === guid)?.value ??
+			fail(`Missing value for EFI variable ${hashComponent.guid}-${hashComponent.name}`);
+		if (value != "missing") {
+			await hashData(hash, value);
+		}
+		const { valueVar } = generateReadEfiVariable(codeBuilder, hashComponent.name, hashComponent.guid);
+		codeBuilder.write(`if (${valueVar}) {
 	sha256_update(hash, ${valueVar}, ${valueVar}_len);
-	FREE_POOL(${valueVar});
 }
 `);
 	},
@@ -386,42 +424,87 @@ if (${valueVar}) {
 	},
 };
 
-export const enrollSecureBoot = async ({ codeBuilder, config: { enrollSecureBoot } }: { codeBuilder: CodeBuilder; config: Config }) => {
-	if (enrollSecureBoot) {
-		const efiGlobalVarGuid = codeBlockGuid(codeBuilder, "8be4df61-93ca-11d2-aa0d-00e098032b8c").varName;
-		const setupModeVariable = codeBlockUTF16String(codeBuilder, "SetupMode").varName;
-		const varsToSet = [
-			{
-				name: codeBlockUTF16String(codeBuilder, "KEK").varName,
-				guid: efiGlobalVarGuid,
-				value: binaryDataVar(codeBuilder, enrollSecureBoot.kek),
-			},
-			{
-				name: codeBlockUTF16String(codeBuilder, "db").varName,
-				guid: codeBlockGuid(codeBuilder, "d719b2cb-3d3a-4596-a3bc-dad00e67656f").varName,
-				value: binaryDataVar(codeBuilder, enrollSecureBoot.db),
-			},
-			{
-				name: codeBlockUTF16String(codeBuilder, "PK").varName,
-				guid: efiGlobalVarGuid,
-				value: binaryDataVar(codeBuilder, enrollSecureBoot.pk),
-			},
-		];
-		codeBuilder.write(`
-UINT8 byteVarContent = 0;
-UINTN byteVarSize = sizeof(byteVarContent);
-status = uefi_call_wrapper(RT->GetVariable, 5, ${setupModeVariable}, &${efiGlobalVarGuid}, NULL, &byteVarSize, &byteVarContent);
-if (status == EFI_SUCCESS && byteVarSize == 1 && byteVarContent) {
+const toArray = <T>(value?: T | T[]) => (value == null ? [] : Array.isArray(value) ? value : [value]);
+
+const EFI_GLOBAL_VARIABLE_GUID = "8be4df61-93ca-11d2-aa0d-00e098032b8c" as const;
+const EFI_IMAGE_SECURITY_DATABASE_GUID = "d719b2cb-3d3a-4596-a3bc-dad00e67656f" as const;
+export const EFI_VAR_PK = { name: "PK" as const, guid: EFI_GLOBAL_VARIABLE_GUID, type: "efivar" as const };
+export const EFI_VAR_KEK = { name: "KEK" as const, guid: EFI_GLOBAL_VARIABLE_GUID, type: "efivar" as const };
+export const EFI_VAR_DB = { name: "db" as const, guid: EFI_IMAGE_SECURITY_DATABASE_GUID, type: "efivar" as const };
+export const EFI_VAR_DBX = { name: "dbx" as const, guid: EFI_IMAGE_SECURITY_DATABASE_GUID, type: "efivar" as const };
+
+export const parseAuthVar = (authVar: Buffer) => {
+	// cf EFI_VARIABLE_AUTHENTICATION_2 and AUTHINFO2_SIZE in https://git.kernel.org/pub/scm/linux/kernel/git/jejb/efitools.git/tree/include/efiauthenticated.h
+	const valueOffset = 16 + authVar.readUint32LE(16);
+	const auth = authVar.subarray(0, valueOffset);
+	const value = authVar.subarray(valueOffset);
+	return {
+		auth,
+		value,
+	};
+};
+
+const generateSecureBootSetVariable = async (codeBuilder: CodeBuilder, { name, guid }: { name: string; guid: string }, binaryData: undefined | BinaryData | BinaryData[]) => {
+	let value = null;
+	const auth = [];
+	let maxAuthLength = 0;
+	for (const data of toArray(binaryData)) {
+		const decodedData = parseAuthVar(await readBinaryData(data));
+		if (!value) {
+			value = decodedData.value;
+		} else if (!value.equals(decodedData.value)) {
+			throw new Error(`Inconsistent values for ${name}`);
+		}
+		maxAuthLength = Math.max(maxAuthLength, decodedData.auth.length);
+		auth.push(decodedData.auth);
+	}
+	if (!value) {
+		return [];
+	}
+	const expectedEfiVarValue = codeBuilder.createBinaryVar(value);
+	const { valueVar: efiVarValue, guidVar, varNameVar } = generateReadEfiVariable(codeBuilder, name, guid);
+	codeBuilder.write(`if (!${efiVarValue} || ${value.length} != ${efiVarValue}_len || RtCompareMem(${efiVarValue}, ${expectedEfiVarValue}, ${value.length}) != 0) {\n`);
+	const authValueName = codeBuilder.newVar();
+	codeBuilder.write(`UINT8 *${authValueName} = AllocatePool(${value.length + maxAuthLength});
+	if (${authValueName}) {
+  RtCopyMem(&${authValueName}[${maxAuthLength}], ${expectedEfiVarValue}, ${value.length});
 `);
-		for (const { name, guid, value } of varsToSet) {
-			codeBuilder.write(`
-	status = uefi_call_wrapper(RT->SetVariable, 5, ${name}, &${guid}, EFI_VARIABLE_NON_VOLATILE
+	let closingBraces = "";
+	for (const tryAuth of auth) {
+		const authVar = codeBuilder.createBinaryVar(tryAuth);
+		const pointer = `&${authValueName}[${maxAuthLength - tryAuth.length}]`;
+		codeBuilder.write(`
+	RtCopyMem(${pointer}, ${authVar}, ${tryAuth.length});
+	status = uefi_call_wrapper(RT->SetVariable, 5, ${varNameVar}, &${guidVar}, EFI_VARIABLE_NON_VOLATILE
 		| EFI_VARIABLE_RUNTIME_ACCESS
 		| EFI_VARIABLE_BOOTSERVICE_ACCESS
-		| EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS, ${value}_len, ${value});
-	CHECK_ERROR(0);
+		| EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS, ${tryAuth.length + value.length}, ${pointer});
+	if (status == EFI_SECURITY_VIOLATION) {
 `);
-		}
-		codeBuilder.write(`}\n`);
+		closingBraces += "}";
 	}
+	codeBuilder.write(`${closingBraces}
+FREE_POOL(${authValueName});
+if (status == EFI_SUCCESS) {
+  FREE_POOL(${efiVarValue});
+  ${efiVarValue}_len = 1;
+}
+}}\n`);
+	return [
+		{
+			value: { type: "buffer", buffer: value } as BinaryDataFromBuffer,
+			name,
+			guid,
+		},
+	];
 };
+
+export const enrollSecureBoot = async ({ codeBuilder, config: { enrollSecureBoot } }: { codeBuilder: CodeBuilder; config: Config }) =>
+	enrollSecureBoot
+		? [
+				...(await generateSecureBootSetVariable(codeBuilder, EFI_VAR_PK, enrollSecureBoot.pk)),
+				...(await generateSecureBootSetVariable(codeBuilder, EFI_VAR_KEK, enrollSecureBoot.kek)),
+				...(await generateSecureBootSetVariable(codeBuilder, EFI_VAR_DB, enrollSecureBoot.db)),
+				...(await generateSecureBootSetVariable(codeBuilder, EFI_VAR_DBX, enrollSecureBoot.dbx)),
+			]
+		: [];
