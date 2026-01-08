@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { statSync, writeFileSync } from "node:fs";
-import type { Config } from "../dist";
+import { EFI_VAR_PK, EFI_VAR_KEK, EFI_VAR_DB, EFI_VAR_DBX, type Config } from "../dist/index.js";
+
+const step = process.env.STEP ?? "1";
 
 const bootkey = randomBytes(2048);
 writeFileSync("bootkey.img", bootkey);
@@ -10,20 +12,25 @@ const efiStart = "0x800";
 const efiSize = "0x19000";
 const efiDevice = `${hdDevice}/HD(1,GPT,CCFEACB5-A85F-4F23-95E9-794387DCCF0E,${efiStart},${efiSize})`;
 const config: Config = {
-	inputFile: "grub.efi",
+	inputFile: `grub${step}.efi`,
 	buildFolder: "../bootcode",
 	skipExtract: true,
 	enrollSecureBoot: {
-		kek: { type: "file", file: "sbkeys/KEK.auth" },
-		db: { type: "file", file: "sbkeys/db.auth" },
-		pk: { type: "file", file: "sbkeys/PK.auth" },
+		kek: { type: "file" as const, file: `sbkeys${step}/KEK.auth` },
+		db: { type: "file", file: `sbkeys${step}/db.auth` },
+		dbx: { type: "file", file: `sbkeys${step}/dbx.auth` },
+		pk: [{ type: "file", file: `sbkeys${step}/PK.auth` }, ...(step === "2" ? [{ type: "file" as const, file: `sbkeys${step}/PK2.auth` }] : [])],
 	},
 	hashComponents: [
 		{ type: "random", length: 64 },
 		{ type: "efivar", guid: "8be4df61-93ca-11d2-aa0d-00e098032b8c", name: "Lang", value: { type: "binary", buffer: "eng\0" } },
+		{ type: "efivar", guid: EFI_VAR_PK.guid, name: "SecureBoot", value: { type: "binary", buffer: "\x01" } },
+		EFI_VAR_PK,
+		EFI_VAR_KEK,
+		EFI_VAR_DB,
+		EFI_VAR_DBX,
 		{ type: "efivar", guid: "8be4df61-93ca-11d2-aa0d-00e098032b8c", name: "SetupMode", value: { type: "binary", buffer: "\0" } },
-		{ type: "efivar", guid: "8be4df61-93ca-11d2-aa0d-00e098032b8c", name: "SecureBoot", value: { type: "binary", buffer: "\x01" } },
-		{ type: "efivar", guid: "6f4e8ca1-6115-416e-9e92-db2e142a882c", name: "MissingVar", value: { type: "binary", buffer: "" } },
+		{ type: "efivar", guid: "6f4e8ca1-6115-416e-9e92-db2e142a882c", name: "MissingVar", value: "missing" },
 		{ type: "hd-size", value: hdSize },
 		{ type: "hd-size", device: efiDevice, value: +efiSize * 512 },
 		{ type: "hd-data", offsetRef: "start", offset: 0, value: { type: "file", file: "disk.img", offset: 0, size: (+efiStart + 1) * 512 } },

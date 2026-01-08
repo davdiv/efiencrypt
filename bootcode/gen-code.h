@@ -3,8 +3,11 @@
 #include "sha.h"
 
 #define FREE_POOL(pool) \
-  FreePool(pool);       \
-  pool = NULL
+  if (pool)             \
+  {                     \
+    FreePool(pool);     \
+    pool = NULL;         \
+  }
 #define PRINT_ERROR() Print(errorMsg, __LINE__, EFI_ERROR(status) ? status : EFI_DEVICE_ERROR)
 #define HANDLE_PROTOCOL(handle, guid, result) status = uefi_call_wrapper(gBS->OpenProtocol, 6, handle, &guid, result, image_handle, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL)
 #define CHECK_ERROR(extraCondition)        \
